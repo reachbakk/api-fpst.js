@@ -1,1 +1,56 @@
+// api/fpst.js
+import OpenAI from "openai";
+
+export default async function handler(req, res) {
+  // CORS (allow your funnel)
+  res.setHeader("Access-Control-Allow-Origin", "https://app.reachbakk.com"); // or "*" during testing
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS,GET");
+
+  if (req.method === "OPTIONS") return res.status(200).end();
+
+  if (req.method === "GET") {
+    return res.status(200).json({ ok: true, route: "fpst", method: "GET" });
+  }
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  try {
+    const { user, history = [] } =
+      (typeof req.body === "object" && req.body) || {};
+    if (!user) return res.status(400).json({ error: "Missing `user`" });
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ error: "Server not configured" });
+    }
+
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const systemPrompt = `
+You are Fluid Pump Systems Troubleshooter (FPST). Safety first (LOTO, 0 psi, guards).
+Ask one thing at a time. End every reply with "Next Step ▶ ...".
+`.trim();
+
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...history.map((h) => ({ role: h.role, content: h.content })),
+      { role: "user", content: user },
+    ];
+
+    const r = await client.chat.completions.create({
+      model: "gpt-4o",
+      temperature: 0.2,
+      max_tokens: 600,
+      messages,
+    });
+
+    const reply = r.choices?.[0]?.message?.content ?? "No reply.";
+    return res.status(200).json({ reply });
+  } catch (e) {
+    console.error("API error:", e);
+    return res.status(500).json({ error: "Server error" });
+  }
+}
 
